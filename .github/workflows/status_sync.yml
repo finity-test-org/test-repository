@@ -36,7 +36,7 @@ jobs:
             // Find the project containing this issue
             const projectsQuery = `
               query {
-                organization(login: organization.login) {
+                organization(login: organization...) {
                   projectV2(number: 1) {
                     nodes {
                       id
