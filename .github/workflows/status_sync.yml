@@ -16,6 +16,7 @@ jobs:
           script: |
             console.log('== Starting Label to Status Workflow ==');
             const payload = context.payload;
+            console.log(payload);
             const issue = payload.issue;
             const label = payload.label;
 
@@ -35,32 +36,8 @@ jobs:
 
             // Find the project containing this issue
             const projectsQuery = `
-              query($issueId: ID!) {
-                node(id: $issueId) {
-                  ... on Issue {
-                    projectItems(first: 10) {
-                      nodes {
-                        id
-                        project {
-                          id
-                          title
-                          fields(first: 20) {
-                            nodes {
-                              ... on ProjectV2SingleSelectField {
-                                id
-                                name
-                                options {
-                                  id
-                                  name
-                                }
-                              }
-                            }
-                          }
-                        }
-                      }
-                    }
-                  }
-                }
+              query {
+                organization(login: "")
               }
             `;
 
