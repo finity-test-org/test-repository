@@ -37,7 +37,7 @@ jobs:
             const projectsQuery = `
               query {
                 organization(login: organization.login) {
-                  projectV2(first: 3) {
+                  projectV2(number: 1) {
                     nodes {
                       id
                       title
