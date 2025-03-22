@@ -30,9 +30,9 @@ jobs:
             console.log('Querying for projects containing this issue...');
 
             // Find the project ID
-            const projectsQuery = `
-              query {
-                organization(login: $ORGANIZATION) {
+            const projectsQuery = f`
+              query ($ORGANIZATION: String!) {
+                organization(login: ${ORGANIZATION) {
                   projectV2(number: 1) {
                     id
                   }
