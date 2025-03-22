@@ -22,6 +22,7 @@ jobs:
             const statusString = label.name.replace('Status:', '').trim();
             console.log(`Extracted status: "${statusString}"`);
             const organization = payload.organization;
+            const organizationName = organization.login;
 
             console.log('== Starting Label to Status Workflow ==');
             console.log(`Event type: ${payload.action}`);
@@ -36,7 +37,7 @@ jobs:
             // Find the project containing this issue
             const projectsQuery = `
               query {
-                organization(login: organization...) {
+                organization(login: organizationName) {
                   projectV2(number: 1) {
                     nodes {
                       id
