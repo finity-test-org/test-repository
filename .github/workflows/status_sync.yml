@@ -14,21 +14,20 @@ jobs:
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
+            console.log('== Starting Label to Status Workflow ==');
             const payload = context.payload;
-            console.log(payload);
-            const event = github.event;
-            console.log(event);
+            const issue = payload.issue;
+            const label = payload.label;
 
             console.log('== Starting Label to Status Workflow ==');
-            console.log(`Event type: ${github.event.action}`);
-            console.log(`Label: ${github.event.label.name}`);
+            console.log(`Event type: ${payload.action}`);
+            console.log(`Label: ${label.name}`);
 
             // Extract status from label
-            const status = github.event.label.name.replace('Status:', '').trim();
-            console.log(`Extracted status: "${status}"`);
+            const statusString = label.name.replace('Status:', '').trim();
+            console.log(`Extracted status: "${statusString}"`);
 
-            // Get issue node ID (needed for GraphQL operations)
-            const issue = context.payload.issue;
+            // Get issue node ID
             const issueNodeId = issue.node_id;
             console.log(`Issue #${issue.number}, Node ID: ${issueNodeId}`);
 
