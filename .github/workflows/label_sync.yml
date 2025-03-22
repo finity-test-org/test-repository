@@ -1,0 +1,44 @@
+name: Sync Status to Label
+
+on:
+  project_card:
+    types: [moved]
+
+jobs:
+  sync-status-to-label:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Add label when moved to In Progress
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const projectCard = context.payload.project_card;
+
+            // Skip if not associated with an issue
+            if (!projectCard.content_url) {
+              console.log('Project card not linked to an issue, skipping');
+              return;
+            }
+
+            // Extract issue number from content_url
+            const issueUrlParts = projectCard.content_url.split('/');
+            const issueNumber = parseInt(issueUrlParts[issueUrlParts.length - 1], 10);
+
+            // Get the column name
+            const columnResponse = await github.rest.projects.getColumn({
+              column_id: projectCard.column_id
+            });
+
+            const columnName = columnResponse.data.name;
+
+            // If column is "In Progress", add the label
+            if (columnName.toLowerCase() === 'in progress') {
+              await github.rest.issues.addLabels({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issueNumber,
+                labels: ['in progress']
+              });
+              console.log(`Added "in progress" label to issue #${issueNumber}`);
+            }
