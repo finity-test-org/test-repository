@@ -43,7 +43,7 @@ jobs:
             let projectsResult;
             try {
               projectsResult = await github.graphql(projectsQuery, {
-                ORGANIZATION: organizationName
+                ORGANIZATION: organization.login
               });
               console.log('Projects query successful');
             } catch (error) {
