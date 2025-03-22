@@ -19,14 +19,13 @@ jobs:
             console.log(payload);
             const issue = payload.issue;
             const label = payload.label;
+            const statusString = label.name.replace('Status:', '').trim();
+            console.log(`Extracted status: "${statusString}"`);
+            const organization = payload.organization;
 
             console.log('== Starting Label to Status Workflow ==');
             console.log(`Event type: ${payload.action}`);
             console.log(`Label: ${label.name}`);
-
-            // Extract status from label
-            const statusString = label.name.replace('Status:', '').trim();
-            console.log(`Extracted status: "${statusString}"`);
 
             // Get issue node ID
             const issueNodeId = issue.node_id;
@@ -37,7 +36,14 @@ jobs:
             // Find the project containing this issue
             const projectsQuery = `
               query {
-                organization(login: "")
+                organization(login: organization.login) {
+                  projectV2(first: 3) {
+                    nodes {
+                      id
+                      title
+                    }
+                  }
+                }
               }
             `;
 
