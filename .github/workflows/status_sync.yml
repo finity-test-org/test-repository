@@ -14,28 +14,117 @@ jobs:
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
-            const issue = context.payload.issue;
-            const status = context.payload.label.name.replace('Status:', '').trim();
-            const projectColumns = await github.rest.projects.listColumns({
-              project_id: 1
-            });
-            const column = projectColumns.data.find(column => column.name.toLowerCase() === status.toLowerCase());
-            if (!column) {
-              console.log(`Column for status "${status}" not found, skipping`);
+            // Check if this is a status field change
+            const projectItem = context.payload.project_v2_item;
+            const changes = context.payload.changes;
+
+            // Skip if not a field value change
+            if (!changes.field_value) {
+              console.log('Not a field value change, skipping');
               return;
             }
-            const issueProjectCards = await github.rest.projects.listCards({
-              issue_id: issue.id
+
+            // Get the item details to check if it's linked to an issue and what field changed
+            const itemQuery = `
+              query($itemId: ID!) {
+                node(id: $itemId) {
+                  ... on ProjectV2Item {
+                    id
+                    content {
+                      ... on Issue {
+                        id
+                        number
+                        repository {
+                          name
+                          owner {
+                            login
+                          }
+                        }
+                      }
+                    }
+                    fieldValues(first: 20) {
+                      nodes {
+                        ... on ProjectV2ItemFieldSingleSelectValue {
+                          field {
+                            ... on ProjectV2SingleSelectField {
+                              id
+                              name
+                            }
+                          }
+                          name
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            `;
+
+            const itemResult = await github.graphql(itemQuery, {
+              itemId: projectItem.node_id
             });
-            const issueProjectCard = issueProjectCards.data.find(card => card.column_id === column.id);
-            if (issueProjectCard) {
-              console.log(`Issue already in column "${column.name}", skipping`);
+
+            console.log('Item query result:', JSON.stringify(itemResult, null, 2));
+
+            // Check if the item is linked to an issue
+            const item = itemResult.node;
+            if (!item.content || item.content.__typename !== 'Issue') {
+              console.log('Item not linked to an issue, skipping');
               return;
             }
-            await github.rest.projects.moveCard({
-              card_id: issueProjectCards.data[0].id,
-              position: 'top',
-              column_id: column.id
+
+            // Get the current status field value
+            const statusFieldValue = item.fieldValues.nodes.find(
+              node => node.field && node.field.name.toLowerCase() === 'status'
+            );
+
+            if (!statusFieldValue) {
+              console.log('No status field found or status not set, skipping');
+              return;
+            }
+
+            const status = statusFieldValue.name;
+            console.log(`Current status: ${status}`);
+
+            // Extract issue info
+            const issueRepo = item.content.repository.name;
+            const issueOwner = item.content.repository.owner.login;
+            const issueNumber = item.content.number;
+
+            // Determine label name based on status
+            let labelName;
+            if (status.toLowerCase() === 'in progress') {
+              labelName = 'in progress';
+            } else {
+              labelName = `Status: ${status}`;
+            }
+
+            // Get current labels to avoid duplicates
+            const { data: issue } = await github.rest.issues.get({
+              owner: issueOwner,
+              repo: issueRepo,
+              issue_number: issueNumber
             });
-            console.log(`Moved issue to column "${column.name}"`);
-            return;
+
+            // Remove any existing status labels
+            for (const label of issue.labels) {
+              if (label.name === 'in progress' || label.name.startsWith('Status:')) {
+                await github.rest.issues.removeLabel({
+                  owner: issueOwner,
+                  repo: issueRepo,
+                  issue_number: issueNumber,
+                  name: label.name
+                });
+                console.log(`Removed label "${label.name}" from issue #${issueNumber}`);
+              }
+            }
+
+            // Add the new status label
+            await github.rest.issues.addLabels({
+              owner: issueOwner,
+              repo: issueRepo,
+              issue_number: issueNumber,
+              labels: [labelName]
+            });
+
+            console.log(`Added label "${labelName}" to issue #${issueNumber}`);
