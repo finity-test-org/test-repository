@@ -33,8 +33,11 @@ jobs:
             const projectsQuery = `
               query ($ORGANIZATION: String!) {
                 organization(login: $ORGANIZATION) {
-                  projectV2(number: 1) {
-                    id
+                  projectsV2(first: 20) {
+                    nodes {
+                      id
+                      title
+                    }
                   }
                 }
               }
