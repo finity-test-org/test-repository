@@ -22,27 +22,19 @@ jobs:
             const statusString = label.name.replace('Status:', '').trim();
             console.log(`Extracted status: "${statusString}"`);
             const organization = payload.organization;
-            const organizationName = organization.login;
 
             console.log('== Starting Label to Status Workflow ==');
             console.log(`Event type: ${payload.action}`);
             console.log(`Label: ${label.name}`);
 
-            // Get issue node ID
-            const issueNodeId = issue.node_id;
-            console.log(`Issue #${issue.number}, Node ID: ${issueNodeId}`);
-
             console.log('Querying for projects containing this issue...');
 
-            // Find the project containing this issue
+            // Find the project ID
             const projectsQuery = `
               query {
-                organization(login: organizationName) {
+                organization(login: $ORGANIZATION) {
                   projectV2(number: 1) {
-                    nodes {
-                      id
-                      title
-                    }
+                    id
                   }
                 }
               }
@@ -51,7 +43,7 @@ jobs:
             let projectsResult;
             try {
               projectsResult = await github.graphql(projectsQuery, {
-                issueId: issueNodeId
+                ORGANIZATION: organizationName
               });
               console.log('Projects query successful');
             } catch (error) {
@@ -59,6 +51,8 @@ jobs:
               console.error(`Error details: ${JSON.stringify(error, null, 2)}`);
               return;
             }
+
+            console.log(projectsResult);
 
             console.log(`Raw projects data: ${JSON.stringify(projectsResult, null, 2)}`);
 
