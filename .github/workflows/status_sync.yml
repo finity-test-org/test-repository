@@ -20,12 +20,13 @@ jobs:
             const issue = payload.issue;
             const label = payload.label;
             const statusString = label.name.replace('Status:', '').trim();
-            console.log(`Extracted status: "${statusString}"`);
             const organization = payload.organization;
 
             console.log('== Starting Label to Status Workflow ==');
             console.log(`Event type: ${payload.action}`);
             console.log(`Label: ${label.name}`);
+            console.log(`Extracted status: "${statusString}"`);
+            console.log(`Organization: ${organization.login}`);
 
             console.log('Querying for projects containing this issue...');
 
@@ -58,99 +59,3 @@ jobs:
             console.log(projectsResult);
 
             console.log(`Raw projects data: ${JSON.stringify(projectsResult, null, 2)}`);
-
-            const projectItems = projectsResult.node.projectItems.nodes;
-            console.log(`Found ${projectItems.length} project items for this issue`);
-
-            if (projectItems.length === 0) {
-              console.log('Issue is not in any projects, ending workflow');
-              return;
-            }
-
-            // Process each project this issue is in
-            for (const projectItem of projectItems) {
-              const projectId = projectItem.project.id;
-              const projectItemId = projectItem.id;
-              const projectTitle = projectItem.project.title;
-              
-              console.log(`\nProcessing project: "${projectTitle}" (ID: ${projectId})`);
-              console.log(`Project item ID: ${projectItemId}`);
-              
-              // Find the status field in this project
-              const fields = projectItem.project.fields.nodes;
-              console.log(`Project has ${fields.length} fields`);
-              fields.forEach(field => {
-                if (field.name) {
-                  console.log(`Field: ${field.name}, ID: ${field.id}`);
-                  if (field.options) {
-                    console.log(`Options: ${JSON.stringify(field.options.map(o => o.name))}`);
-                  }
-                }
-              });
-              
-              const statusField = fields.find(field => 
-                field.name && field.name.toLowerCase() === 'status'
-              );
-              
-              if (!statusField) {
-                console.log(`No status field found in project ${projectTitle}, skipping`);
-                continue;
-              }
-              
-              console.log(`Found status field: ${statusField.id}`);
-              console.log(`Available status options: ${JSON.stringify(statusField.options.map(o => o.name))}`);
-              
-              // Find the matching status option
-              const statusOption = statusField.options.find(option => 
-                option.name.toLowerCase() === status.toLowerCase()
-              );
-              
-              if (!statusOption) {
-                console.log(`No status option matching "${status}" found in project ${projectTitle}, skipping`);
-                continue;
-              }
-              
-              console.log(`Found matching status option: ${statusOption.name} (ID: ${statusOption.id})`);
-              
-              // Update the status
-              const updateMutation = `
-                mutation($projectId: ID!, $itemId: ID!, $fieldId: ID!, $optionId: String!) {
-                  updateProjectV2ItemFieldValue(input: {
-                    projectId: $projectId
-                    itemId: $itemId
-                    fieldId: $fieldId
-                    value: { 
-                      singleSelectOptionId: $optionId
-                    }
-                  }) {
-                    projectV2Item {
-                      id
-                    }
-                  }
-                }
-              `;
-              
-              console.log(`Executing mutation with params:
-                projectId: ${projectId}
-                itemId: ${projectItemId}
-                fieldId: ${statusField.id}
-                optionId: ${statusOption.id}
-              `);
-              
-              try {
-                const updateResult = await github.graphql(updateMutation, {
-                  projectId: projectId,
-                  itemId: projectItemId,
-                  fieldId: statusField.id,
-                  optionId: statusOption.id
-                });
-                
-                console.log(`Successfully updated issue status to "${status}" in project ${projectTitle}`);
-                console.log(`Update result: ${JSON.stringify(updateResult, null, 2)}`);
-              } catch (error) {
-                console.error(`Error updating status: ${error.message}`);
-                console.error(`Error details: ${JSON.stringify(error, null, 2)}`);
-              }
-            }
-
-            console.log('== Label to Status Workflow Completed ==');
