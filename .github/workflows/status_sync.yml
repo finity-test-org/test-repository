@@ -14,10 +14,10 @@ jobs:
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
-            const projectItem = context.payload.project_v2_item;
-            const changes = context.payload.changes;
-            console.log(projectItem);
-            console.log(changes);
+            const payload = context.payload;
+            console.log(payload);
+            const event = github.event;
+            console.log(event);
 
             console.log('== Starting Label to Status Workflow ==');
             console.log(`Event type: ${github.event.action}`);
