@@ -6,6 +6,7 @@ on:
 
 jobs:
   sync-label-to-status:
+    permissions: write-all
     runs-on: ubuntu-latest
     if: startsWith(github.event.label.name, 'Status:')
     steps:
