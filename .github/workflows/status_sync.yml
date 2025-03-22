@@ -7,51 +7,56 @@ on:
 jobs:
   sync-label-to-status:
     runs-on: ubuntu-latest
+    if: startsWith(github.event.label.name, 'Status:')
     steps:
-      - name: Move card to appropriate column when status label added/updated
-        if: startsWith(github.event.label.name, 'Status:')
+      - name: Move issue to appropriate status in project
         uses: actions/github-script@v7
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
-            // Check if this is a status field change
             const projectItem = context.payload.project_v2_item;
             const changes = context.payload.changes;
+            console.log(projectItem);
+            console.log(changes);
 
-            // Skip if not a field value change
-            if (!changes.field_value) {
-              console.log('Not a field value change, skipping');
-              return;
-            }
+            console.log('== Starting Label to Status Workflow ==');
+            console.log(`Event type: ${github.event.action}`);
+            console.log(`Label: ${github.event.label.name}`);
 
-            // Get the item details to check if it's linked to an issue and what field changed
-            const itemQuery = `
-              query($itemId: ID!) {
-                node(id: $itemId) {
-                  ... on ProjectV2Item {
-                    id
-                    content {
-                      ... on Issue {
-                        id
-                        number
-                        repository {
-                          name
-                          owner {
-                            login
-                          }
-                        }
-                      }
-                    }
-                    fieldValues(first: 20) {
+            // Extract status from label
+            const status = github.event.label.name.replace('Status:', '').trim();
+            console.log(`Extracted status: "${status}"`);
+
+            // Get issue node ID (needed for GraphQL operations)
+            const issue = context.payload.issue;
+            const issueNodeId = issue.node_id;
+            console.log(`Issue #${issue.number}, Node ID: ${issueNodeId}`);
+
+            console.log('Querying for projects containing this issue...');
+
+            // Find the project containing this issue
+            const projectsQuery = `
+              query($issueId: ID!) {
+                node(id: $issueId) {
+                  ... on Issue {
+                    projectItems(first: 10) {
                       nodes {
-                        ... on ProjectV2ItemFieldSingleSelectValue {
-                          field {
-                            ... on ProjectV2SingleSelectField {
-                              id
-                              name
+                        id
+                        project {
+                          id
+                          title
+                          fields(first: 20) {
+                            nodes {
+                              ... on ProjectV2SingleSelectField {
+                                id
+                                name
+                                options {
+                                  id
+                                  name
+                                }
+                              }
                             }
                           }
-                          name
                         }
                       }
                     }
@@ -60,71 +65,112 @@ jobs:
               }
             `;
 
-            const itemResult = await github.graphql(itemQuery, {
-              itemId: projectItem.node_id
-            });
-
-            console.log('Item query result:', JSON.stringify(itemResult, null, 2));
-
-            // Check if the item is linked to an issue
-            const item = itemResult.node;
-            if (!item.content || item.content.__typename !== 'Issue') {
-              console.log('Item not linked to an issue, skipping');
+            let projectsResult;
+            try {
+              projectsResult = await github.graphql(projectsQuery, {
+                issueId: issueNodeId
+              });
+              console.log('Projects query successful');
+            } catch (error) {
+              console.error(`GraphQL projects query error: ${error.message}`);
+              console.error(`Error details: ${JSON.stringify(error, null, 2)}`);
               return;
             }
 
-            // Get the current status field value
-            const statusFieldValue = item.fieldValues.nodes.find(
-              node => node.field && node.field.name.toLowerCase() === 'status'
-            );
+            console.log(`Raw projects data: ${JSON.stringify(projectsResult, null, 2)}`);
 
-            if (!statusFieldValue) {
-              console.log('No status field found or status not set, skipping');
+            const projectItems = projectsResult.node.projectItems.nodes;
+            console.log(`Found ${projectItems.length} project items for this issue`);
+
+            if (projectItems.length === 0) {
+              console.log('Issue is not in any projects, ending workflow');
               return;
             }
 
-            const status = statusFieldValue.name;
-            console.log(`Current status: ${status}`);
-
-            // Extract issue info
-            const issueRepo = item.content.repository.name;
-            const issueOwner = item.content.repository.owner.login;
-            const issueNumber = item.content.number;
-
-            // Determine label name based on status
-            let labelName;
-            if (status.toLowerCase() === 'in progress') {
-              labelName = 'in progress';
-            } else {
-              labelName = `Status: ${status}`;
-            }
-
-            // Get current labels to avoid duplicates
-            const { data: issue } = await github.rest.issues.get({
-              owner: issueOwner,
-              repo: issueRepo,
-              issue_number: issueNumber
-            });
-
-            // Remove any existing status labels
-            for (const label of issue.labels) {
-              if (label.name === 'in progress' || label.name.startsWith('Status:')) {
-                await github.rest.issues.removeLabel({
-                  owner: issueOwner,
-                  repo: issueRepo,
-                  issue_number: issueNumber,
-                  name: label.name
+            // Process each project this issue is in
+            for (const projectItem of projectItems) {
+              const projectId = projectItem.project.id;
+              const projectItemId = projectItem.id;
+              const projectTitle = projectItem.project.title;
+              
+              console.log(`\nProcessing project: "${projectTitle}" (ID: ${projectId})`);
+              console.log(`Project item ID: ${projectItemId}`);
+              
+              // Find the status field in this project
+              const fields = projectItem.project.fields.nodes;
+              console.log(`Project has ${fields.length} fields`);
+              fields.forEach(field => {
+                if (field.name) {
+                  console.log(`Field: ${field.name}, ID: ${field.id}`);
+                  if (field.options) {
+                    console.log(`Options: ${JSON.stringify(field.options.map(o => o.name))}`);
+                  }
+                }
+              });
+              
+              const statusField = fields.find(field => 
+                field.name && field.name.toLowerCase() === 'status'
+              );
+              
+              if (!statusField) {
+                console.log(`No status field found in project ${projectTitle}, skipping`);
+                continue;
+              }
+              
+              console.log(`Found status field: ${statusField.id}`);
+              console.log(`Available status options: ${JSON.stringify(statusField.options.map(o => o.name))}`);
+              
+              // Find the matching status option
+              const statusOption = statusField.options.find(option => 
+                option.name.toLowerCase() === status.toLowerCase()
+              );
+              
+              if (!statusOption) {
+                console.log(`No status option matching "${status}" found in project ${projectTitle}, skipping`);
+                continue;
+              }
+              
+              console.log(`Found matching status option: ${statusOption.name} (ID: ${statusOption.id})`);
+              
+              // Update the status
+              const updateMutation = `
+                mutation($projectId: ID!, $itemId: ID!, $fieldId: ID!, $optionId: String!) {
+                  updateProjectV2ItemFieldValue(input: {
+                    projectId: $projectId
+                    itemId: $itemId
+                    fieldId: $fieldId
+                    value: { 
+                      singleSelectOptionId: $optionId
+                    }
+                  }) {
+                    projectV2Item {
+                      id
+                    }
+                  }
+                }
+              `;
+              
+              console.log(`Executing mutation with params:
+                projectId: ${projectId}
+                itemId: ${projectItemId}
+                fieldId: ${statusField.id}
+                optionId: ${statusOption.id}
+              `);
+              
+              try {
+                const updateResult = await github.graphql(updateMutation, {
+                  projectId: projectId,
+                  itemId: projectItemId,
+                  fieldId: statusField.id,
+                  optionId: statusOption.id
                 });
-                console.log(`Removed label "${label.name}" from issue #${issueNumber}`);
+                
+                console.log(`Successfully updated issue status to "${status}" in project ${projectTitle}`);
+                console.log(`Update result: ${JSON.stringify(updateResult, null, 2)}`);
+              } catch (error) {
+                console.error(`Error updating status: ${error.message}`);
+                console.error(`Error details: ${JSON.stringify(error, null, 2)}`);
               }
             }
 
-            // Add the new status label
-            await github.rest.issues.addLabels({
-              owner: issueOwner,
-              repo: issueRepo,
-              issue_number: issueNumber,
-              labels: [labelName]
-            });
-
-            console.log(`Added label "${labelName}" to issue #${issueNumber}`);
+            console.log('== Label to Status Workflow Completed ==');
